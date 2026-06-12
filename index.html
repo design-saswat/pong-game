@@ -27,9 +27,27 @@
         </div>
 
         <div class="controls">
+            <div class="settings-panel">
+                <div class="setting-group">
+                    <label for="difficultySlider">Difficulty <span id="difficultyLabel">3 - Medium</span></label>
+                    <input type="range" id="difficultySlider" min="1" max="5" value="3">
+                    <small>1 = easiest, 5 = hardest</small>
+                </div>
+                <div class="setting-group">
+                    <label for="targetScoreSelect">Match length</label>
+                    <select id="targetScoreSelect">
+                        <option value="10">10 points</option>
+                        <option value="20" selected>20 points</option>
+                        <option value="30">30 points</option>
+                    </select>
+                    <small>Default match length is 20 points.</small>
+                </div>
+            </div>
+
             <p>Controls: Mouse Y or Arrow Keys ↑↓ to move the left paddle</p>
+            <p id="statusMessage" class="status-message">Choose your difficulty and match length, then start the game.</p>
             <button id="startBtn" class="start-btn">Start Game</button>
-            <button id="resetBtn" class="reset-btn">Reset Score</button>
+            <button id="resetBtn" class="reset-btn">Reset Match</button>
         </div>
     </div>
 

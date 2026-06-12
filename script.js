@@ -7,6 +7,10 @@ const playerScoreDisplay = document.getElementById('playerScore');
 const computerScoreDisplay = document.getElementById('computerScore');
 const startBtn = document.getElementById('startBtn');
 const resetBtn = document.getElementById('resetBtn');
+const difficultySlider = document.getElementById('difficultySlider');
+const difficultyLabel = document.getElementById('difficultyLabel');
+const targetScoreSelect = document.getElementById('targetScoreSelect');
+const statusMessage = document.getElementById('statusMessage');
 
 // Game constants
 const BOARD_WIDTH = gameBoard.clientWidth;
@@ -17,10 +21,22 @@ const BALL_SIZE = 12;
 const PADDLE_SPEED = 6;
 const COMPUTER_SPEED = 4;
 const INITIAL_BALL_SPEED = 4;
+const MAX_BALL_SPEED = 12;
+
+const DIFFICULTY_PROFILES = [
+    { label: 'Lowest', ballMultiplier: 0.9, aiSpeedMultiplier: 0.75, aiError: 0.45 },
+    { label: 'Low', ballMultiplier: 0.95, aiSpeedMultiplier: 0.85, aiError: 0.32 },
+    { label: 'Medium', ballMultiplier: 1.0, aiSpeedMultiplier: 1.0, aiError: 0.22 },
+    { label: 'High', ballMultiplier: 1.1, aiSpeedMultiplier: 1.1, aiError: 0.14 },
+    { label: 'Highest', ballMultiplier: 1.25, aiSpeedMultiplier: 1.2, aiError: 0.08 }
+];
 
 // Game state
 let gameRunning = false;
 let gameStarted = false;
+let gameOver = false;
+let currentDifficulty = Number(difficultySlider.value);
+let targetScore = Number(targetScoreSelect.value);
 
 // Ball object
 let ballObject = {
@@ -81,30 +97,42 @@ gameBoard.addEventListener('mousemove', (e) => {
 });
 
 startBtn.addEventListener('click', () => {
+    if (gameOver) {
+        resetMatch();
+    }
+
     if (!gameStarted) {
+        applyMatchSettings();
         gameRunning = true;
         gameStarted = true;
+        gameOver = false;
         startBtn.textContent = 'Pause Game';
+        statusMessage.textContent = `Difficulty: ${DIFFICULTY_PROFILES[currentDifficulty - 1].label} • First to ${targetScore} points.`;
         gameLoop();
     } else if (gameRunning) {
         gameRunning = false;
         startBtn.textContent = 'Resume Game';
+        statusMessage.textContent = 'Game paused. Click Resume to continue.';
     } else {
         gameRunning = true;
         startBtn.textContent = 'Pause Game';
+        statusMessage.textContent = 'Game resumed.';
         gameLoop();
     }
 });
 
 resetBtn.addEventListener('click', () => {
-    score.player = 0;
-    score.computer = 0;
-    playerScoreDisplay.textContent = score.player;
-    computerScoreDisplay.textContent = score.computer;
-    resetBall();
-    gameRunning = false;
-    gameStarted = false;
-    startBtn.textContent = 'Start Game';
+    resetMatch();
+});
+
+difficultySlider.addEventListener('input', () => {
+    currentDifficulty = Number(difficultySlider.value);
+    difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
+});
+
+targetScoreSelect.addEventListener('change', () => {
+    targetScore = Number(targetScoreSelect.value);
+    statusMessage.textContent = `Match set to ${targetScore} points. Difficulty: ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}.`;
 });
 
 // Update player paddle position
@@ -132,14 +160,26 @@ function updatePlayerPaddle() {
 }
 
 // Update computer paddle position (AI)
-function updateComputerPaddle() {
-    const computerCenter = paddles.computer.y + PADDLE_HEIGHT / 2;
-    const ballCenter = ballObject.y;
+function getDifficultyProfile() {
+    return DIFFICULTY_PROFILES[currentDifficulty - 1] || DIFFICULTY_PROFILES[2];
+}
 
-    // Simple AI: follow the ball
-    if (computerCenter < ballCenter - 35) {
+function applyMatchSettings() {
+    currentDifficulty = Number(difficultySlider.value);
+    targetScore = Number(targetScoreSelect.value);
+    difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
+    paddles.computer.speed = COMPUTER_SPEED * getDifficultyProfile().aiSpeedMultiplier;
+    resetBall();
+}
+
+function updateComputerPaddle() {
+    const profile = getDifficultyProfile();
+    const computerCenter = paddles.computer.y + PADDLE_HEIGHT / 2;
+    const targetCenter = ballObject.y + (Math.random() - 0.5) * profile.aiError * PADDLE_HEIGHT;
+
+    if (computerCenter < targetCenter - 10) {
         paddles.computer.y += paddles.computer.speed;
-    } else if (computerCenter > ballCenter + 35) {
+    } else if (computerCenter > targetCenter + 10) {
         paddles.computer.y -= paddles.computer.speed;
     }
 
@@ -171,11 +211,12 @@ function updateBall() {
         ballObject.y >= paddles.player.y &&
         ballObject.y <= paddles.player.y + PADDLE_HEIGHT
     ) {
-        ballObject.speedX = -ballObject.speedX;
+        const profile = getDifficultyProfile();
+        ballObject.speedX = -Math.abs(ballObject.speedX) - 0.1 * profile.ballMultiplier;
         ballObject.x = paddles.player.x + PADDLE_WIDTH + ballObject.size / 2;
-        // Add spin based on paddle hit location
         const hitPos = (ballObject.y - (paddles.player.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-        ballObject.speedY += hitPos * 3;
+        ballObject.speedY += hitPos * (2.5 + profile.ballMultiplier * 0.6);
+        ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
     }
 
     // Paddle collision - Computer paddle
@@ -184,17 +225,19 @@ function updateBall() {
         ballObject.y >= paddles.computer.y &&
         ballObject.y <= paddles.computer.y + PADDLE_HEIGHT
     ) {
-        ballObject.speedX = -ballObject.speedX;
+        const profile = getDifficultyProfile();
+        ballObject.speedX = Math.abs(ballObject.speedX) + 0.1 * profile.ballMultiplier;
         ballObject.x = paddles.computer.x - ballObject.size / 2;
-        // Add spin based on paddle hit location
         const hitPos = (ballObject.y - (paddles.computer.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-        ballObject.speedY += hitPos * 3;
+        ballObject.speedY += hitPos * (2.5 + profile.ballMultiplier * 0.6);
+        ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
     }
 
     // Left wall (computer scores)
     if (ballObject.x - ballObject.size / 2 < 0) {
         score.computer++;
         computerScoreDisplay.textContent = score.computer;
+        checkMatchWinner();
         resetBall();
     }
 
@@ -202,6 +245,7 @@ function updateBall() {
     if (ballObject.x + ballObject.size / 2 > BOARD_WIDTH) {
         score.player++;
         playerScoreDisplay.textContent = score.player;
+        checkMatchWinner();
         resetBall();
     }
 
@@ -209,12 +253,47 @@ function updateBall() {
     ball.style.top = ballObject.y + 'px';
 }
 
+function checkMatchWinner() {
+    if (score.player >= targetScore || score.computer >= targetScore) {
+        gameRunning = false;
+        gameStarted = false;
+        gameOver = true;
+        startBtn.textContent = 'Start New Match';
+
+        if (score.player > score.computer) {
+            statusMessage.textContent = `You win ${score.player}-${score.computer}! Match finished.`;
+        } else {
+            statusMessage.textContent = `Computer wins ${score.computer}-${score.player}. Match finished.`;
+        }
+    }
+}
+
+function resetMatch() {
+    score.player = 0;
+    score.computer = 0;
+    playerScoreDisplay.textContent = score.player;
+    computerScoreDisplay.textContent = score.computer;
+    gameRunning = false;
+    gameStarted = false;
+    gameOver = false;
+    startBtn.textContent = 'Start Game';
+    currentDifficulty = Number(difficultySlider.value);
+    targetScore = Number(targetScoreSelect.value);
+    difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
+    paddles.computer.speed = COMPUTER_SPEED * getDifficultyProfile().aiSpeedMultiplier;
+    statusMessage.textContent = `Ready for a new ${targetScore}-point match at ${DIFFICULTY_PROFILES[currentDifficulty - 1].label.toLowerCase()} difficulty.`;
+    resetBall();
+}
+
 // Reset ball to center
 function resetBall() {
+    const profile = getDifficultyProfile();
     ballObject.x = BOARD_WIDTH / 2;
     ballObject.y = BOARD_HEIGHT / 2;
-    ballObject.speedX = (Math.random() > 0.5 ? 1 : -1) * INITIAL_BALL_SPEED;
-    ballObject.speedY = (Math.random() - 0.5) * INITIAL_BALL_SPEED * 2;
+    ballObject.speedX = (Math.random() > 0.5 ? 1 : -1) * INITIAL_BALL_SPEED * profile.ballMultiplier;
+    ballObject.speedY = (Math.random() - 0.5) * INITIAL_BALL_SPEED * 2 * profile.ballMultiplier;
+    ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
+    ballObject.speedY = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedY));
 }
 
 // Main game loop
@@ -232,6 +311,10 @@ function gameLoop() {
 
 // Initialize game
 function initGame() {
+    currentDifficulty = Number(difficultySlider.value);
+    targetScore = Number(targetScoreSelect.value);
+    difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
+    paddles.computer.speed = COMPUTER_SPEED * getDifficultyProfile().aiSpeedMultiplier;
     resetBall();
     playerPaddle.style.top = paddles.player.y + 'px';
     computerPaddle.style.top = paddles.computer.y + 'px';
