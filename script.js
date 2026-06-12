@@ -10,6 +10,7 @@ const resetBtn = document.getElementById('resetBtn');
 const difficultySlider = document.getElementById('difficultySlider');
 const difficultyLabel = document.getElementById('difficultyLabel');
 const targetScoreSelect = document.getElementById('targetScoreSelect');
+const sfxToggle = document.getElementById('sfxToggle');
 const statusMessage = document.getElementById('statusMessage');
 
 // Game constants
@@ -75,6 +76,8 @@ let score = {
 };
 let scorePaused = false;
 let scorePauseTimer = null;
+let sfxEnabled = sfxToggle.checked;
+let audioContext = null;
 const pointBlip = document.getElementById('pointBlip');
 const resultOverlay = document.getElementById('resultOverlay');
 const resultCard = document.getElementById('resultCard');
@@ -142,6 +145,15 @@ difficultySlider.addEventListener('input', () => {
 targetScoreSelect.addEventListener('change', () => {
     targetScore = Number(targetScoreSelect.value);
     statusMessage.textContent = `Match set to ${targetScore} points. Difficulty: ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}.`;
+});
+
+sfxToggle.addEventListener('change', () => {
+    sfxEnabled = sfxToggle.checked;
+    if (!sfxEnabled) {
+        statusMessage.textContent = 'SFX muted.';
+    } else {
+        statusMessage.textContent = 'SFX enabled.';
+    }
 });
 
 // Update player paddle position
@@ -250,6 +262,38 @@ function updateComputerPaddle() {
     computerPaddle.style.top = paddles.computer.y + 'px';
 }
 
+function ensureAudio() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+}
+
+function playPaddleSfx() {
+    if (!sfxEnabled) return;
+    ensureAudio();
+
+    const now = audioContext.currentTime;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const freq = 420 + Math.random() * 120;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.75, now + 0.06);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.04, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+}
+
 function clampBallSpeed() {
     const speed = Math.hypot(ballObject.speedX, ballObject.speedY);
 
@@ -294,6 +338,7 @@ function bounceOffPaddle(paddle, isPlayerPaddle) {
         ballObject.x = paddleLeft - ballObject.size / 2;
     }
 
+    playPaddleSfx();
     ballObject.speedY += hitPos * (2.4 + profile.ballMultiplier * 0.6);
     clampBallSpeed();
 }

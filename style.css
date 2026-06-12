@@ -240,6 +240,21 @@ body {
     accent-color: #00ff88;
 }
 
+.toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    text-transform: none;
+    letter-spacing: 0.5px;
+    color: #eafff5;
+}
+
+.toggle-row input {
+    width: 16px;
+    height: 16px;
+}
+
 .setting-group select {
     padding: 8px;
     border-radius: 6px;
