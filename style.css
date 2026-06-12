@@ -88,8 +88,8 @@ body {
     background: #00ff88;
     border-radius: 5px;
     box-shadow: 0 0 10px #00ff88;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 0;
+    transform: none;
 }
 
 .player-paddle {

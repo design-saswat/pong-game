@@ -42,6 +42,8 @@ let targetScore = Number(targetScoreSelect.value);
 let ballObject = {
     x: BOARD_WIDTH / 2,
     y: BOARD_HEIGHT / 2,
+    prevX: BOARD_WIDTH / 2,
+    prevY: BOARD_HEIGHT / 2,
     speedX: INITIAL_BALL_SPEED,
     speedY: INITIAL_BALL_SPEED,
     size: BALL_SIZE
@@ -194,8 +196,58 @@ function updateComputerPaddle() {
     computerPaddle.style.top = paddles.computer.y + 'px';
 }
 
+function clampBallSpeed() {
+    const speed = Math.hypot(ballObject.speedX, ballObject.speedY);
+
+    if (speed > MAX_BALL_SPEED) {
+        ballObject.speedX = (ballObject.speedX / speed) * MAX_BALL_SPEED;
+        ballObject.speedY = (ballObject.speedY / speed) * MAX_BALL_SPEED;
+    }
+}
+
+function bounceOffPaddle(paddle, isPlayerPaddle) {
+    const profile = getDifficultyProfile();
+    const ballLeft = ballObject.x - ballObject.size / 2;
+    const ballRight = ballObject.x + ballObject.size / 2;
+    const ballTop = ballObject.y - ballObject.size / 2;
+    const ballBottom = ballObject.y + ballObject.size / 2;
+    const prevBallLeft = ballObject.prevX - ballObject.size / 2;
+    const prevBallRight = ballObject.prevX + ballObject.size / 2;
+    const prevBallTop = ballObject.prevY - ballObject.size / 2;
+    const prevBallBottom = ballObject.prevY + ballObject.size / 2;
+    const paddleLeft = paddle.x;
+    const paddleRight = paddle.x + paddle.width;
+    const paddleTop = paddle.y;
+    const paddleBottom = paddle.y + paddle.height;
+
+    const crossedPaddle = isPlayerPaddle
+        ? prevBallRight >= paddleRight && ballLeft <= paddleRight
+        : prevBallLeft <= paddleLeft && ballRight >= paddleLeft;
+
+    const overlapsVertically = ballBottom >= paddleTop && ballTop <= paddleBottom;
+
+    if (!crossedPaddle || !overlapsVertically) {
+        return;
+    }
+
+    const hitPos = (ballObject.y - (paddle.y + paddle.height / 2)) / (paddle.height / 2);
+
+    if (isPlayerPaddle) {
+        ballObject.speedX = Math.abs(ballObject.speedX) + 0.08 * profile.ballMultiplier;
+        ballObject.x = paddleRight + ballObject.size / 2;
+    } else {
+        ballObject.speedX = -Math.abs(ballObject.speedX) - 0.08 * profile.ballMultiplier;
+        ballObject.x = paddleLeft - ballObject.size / 2;
+    }
+
+    ballObject.speedY += hitPos * (2.4 + profile.ballMultiplier * 0.6);
+    clampBallSpeed();
+}
+
 // Update ball position
 function updateBall() {
+    ballObject.prevX = ballObject.x;
+    ballObject.prevY = ballObject.y;
     ballObject.x += ballObject.speedX;
     ballObject.y += ballObject.speedY;
 
@@ -205,33 +257,8 @@ function updateBall() {
         ballObject.y = Math.max(ballObject.size / 2, Math.min(BOARD_HEIGHT - ballObject.size / 2, ballObject.y));
     }
 
-    // Paddle collision - Player paddle
-    if (
-        ballObject.x - ballObject.size / 2 <= paddles.player.x + PADDLE_WIDTH &&
-        ballObject.y >= paddles.player.y &&
-        ballObject.y <= paddles.player.y + PADDLE_HEIGHT
-    ) {
-        const profile = getDifficultyProfile();
-        ballObject.speedX = -Math.abs(ballObject.speedX) - 0.1 * profile.ballMultiplier;
-        ballObject.x = paddles.player.x + PADDLE_WIDTH + ballObject.size / 2;
-        const hitPos = (ballObject.y - (paddles.player.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-        ballObject.speedY += hitPos * (2.5 + profile.ballMultiplier * 0.6);
-        ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
-    }
-
-    // Paddle collision - Computer paddle
-    if (
-        ballObject.x + ballObject.size / 2 >= paddles.computer.x &&
-        ballObject.y >= paddles.computer.y &&
-        ballObject.y <= paddles.computer.y + PADDLE_HEIGHT
-    ) {
-        const profile = getDifficultyProfile();
-        ballObject.speedX = Math.abs(ballObject.speedX) + 0.1 * profile.ballMultiplier;
-        ballObject.x = paddles.computer.x - ballObject.size / 2;
-        const hitPos = (ballObject.y - (paddles.computer.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
-        ballObject.speedY += hitPos * (2.5 + profile.ballMultiplier * 0.6);
-        ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
-    }
+    bounceOffPaddle(paddles.player, true);
+    bounceOffPaddle(paddles.computer, false);
 
     // Left wall (computer scores)
     if (ballObject.x - ballObject.size / 2 < 0) {
