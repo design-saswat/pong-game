@@ -20,15 +20,16 @@ const PADDLE_WIDTH = 12;
 const BALL_SIZE = 12;
 const PADDLE_SPEED = 6;
 const COMPUTER_SPEED = 4;
-const INITIAL_BALL_SPEED = 4;
-const MAX_BALL_SPEED = 12;
+const INITIAL_BALL_SPEED = 3.4;
+const MAX_BALL_SPEED = 16;
+const POINT_PAUSE_MS = 1500;
 
 const DIFFICULTY_PROFILES = [
-    { label: 'Lowest', ballMultiplier: 0.9, aiSpeedMultiplier: 0.75, aiError: 0.45 },
-    { label: 'Low', ballMultiplier: 0.95, aiSpeedMultiplier: 0.85, aiError: 0.32 },
-    { label: 'Medium', ballMultiplier: 1.0, aiSpeedMultiplier: 1.0, aiError: 0.22 },
-    { label: 'High', ballMultiplier: 1.1, aiSpeedMultiplier: 1.1, aiError: 0.14 },
-    { label: 'Highest', ballMultiplier: 1.25, aiSpeedMultiplier: 1.2, aiError: 0.08 }
+    { label: 'Lowest', ballMultiplier: 0.75, aiSpeedMultiplier: 0.75, aiError: 0.55 },
+    { label: 'Low', ballMultiplier: 0.88, aiSpeedMultiplier: 0.90, aiError: 0.35 },
+    { label: 'Medium', ballMultiplier: 1.00, aiSpeedMultiplier: 1.00, aiError: 0.22 },
+    { label: 'High', ballMultiplier: 1.12, aiSpeedMultiplier: 1.18, aiError: 0.12 },
+    { label: 'Highest', ballMultiplier: 1.25, aiSpeedMultiplier: 1.35, aiError: 0.06 }
 ];
 
 // Game state
@@ -72,6 +73,12 @@ let score = {
     player: 0,
     computer: 0
 };
+let scorePaused = false;
+let scorePauseTimer = null;
+const pointBlip = document.getElementById('pointBlip');
+const resultOverlay = document.getElementById('resultOverlay');
+const resultCard = document.getElementById('resultCard');
+const confettiLayer = document.getElementById('confettiLayer');
 
 // Keyboard input tracking
 const keys = {
@@ -138,6 +145,53 @@ targetScoreSelect.addEventListener('change', () => {
 });
 
 // Update player paddle position
+function resetPaddlesAndBall() {
+    paddles.player.y = BOARD_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+    paddles.computer.y = BOARD_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+    playerPaddle.style.top = paddles.player.y + 'px';
+    computerPaddle.style.top = paddles.computer.y + 'px';
+    resetBall();
+}
+
+function showPointBlip(winner) {
+    pointBlip.textContent = `${winner} point!`;
+    pointBlip.className = `point-blip ${winner === 'Player' ? 'left' : 'right'}`;
+    pointBlip.style.opacity = '1';
+    pointBlip.style.transform = 'translateY(0) scale(1)';
+    clearTimeout(showPointBlip._timeout);
+    showPointBlip._timeout = setTimeout(() => {
+        pointBlip.style.opacity = '0';
+        pointBlip.style.transform = 'translateY(-10px) scale(0.95)';
+    }, 800);
+}
+
+function showResultState(state) {
+    resultOverlay.classList.add('show');
+    resultCard.className = `result-card ${state.toLowerCase()}`;
+    resultCard.textContent = state;
+    if (state === 'WIN') {
+        spawnConfetti();
+    }
+}
+
+function hideResultState() {
+    resultOverlay.classList.remove('show');
+    resultCard.className = 'result-card';
+}
+
+function spawnConfetti() {
+    confettiLayer.innerHTML = '';
+    for (let i = 0; i < 40; i++) {
+        const piece = document.createElement('span');
+        piece.className = 'confetti-piece';
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.background = ['#00ff88', '#7cffb2', '#ffef6b', '#ff7a59'][i % 4];
+        piece.style.setProperty('--dx', `${(Math.random() - 0.5) * 220}px`);
+        piece.style.animationDuration = `${1.2 + Math.random() * 0.8}s`;
+        confettiLayer.appendChild(piece);
+    }
+}
+
 function updatePlayerPaddle() {
     // Mouse control
     paddles.player.y = mouseY - PADDLE_HEIGHT / 2;
@@ -264,16 +318,17 @@ function updateBall() {
     if (ballObject.x - ballObject.size / 2 < 0) {
         score.computer++;
         computerScoreDisplay.textContent = score.computer;
+        showPointBlip('Computer');
         checkMatchWinner();
-        resetBall();
+        resetBall({ pauseAfterScore: true });
     }
 
-    // Right wall (player scores)
     if (ballObject.x + ballObject.size / 2 > BOARD_WIDTH) {
         score.player++;
         playerScoreDisplay.textContent = score.player;
+        showPointBlip('Player');
         checkMatchWinner();
-        resetBall();
+        resetBall({ pauseAfterScore: true });
     }
 
     ball.style.left = ballObject.x + 'px';
@@ -286,11 +341,14 @@ function checkMatchWinner() {
         gameStarted = false;
         gameOver = true;
         startBtn.textContent = 'Start New Match';
+        const playerWon = score.player > score.computer;
 
-        if (score.player > score.computer) {
+        if (playerWon) {
             statusMessage.textContent = `You win ${score.player}-${score.computer}! Match finished.`;
+            showResultState('WIN');
         } else {
             statusMessage.textContent = `Computer wins ${score.computer}-${score.player}. Match finished.`;
+            showResultState('LOSE');
         }
     }
 }
@@ -303,24 +361,43 @@ function resetMatch() {
     gameRunning = false;
     gameStarted = false;
     gameOver = false;
+    scorePaused = false;
+    clearTimeout(scorePauseTimer);
     startBtn.textContent = 'Start Game';
     currentDifficulty = Number(difficultySlider.value);
     targetScore = Number(targetScoreSelect.value);
     difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
     paddles.computer.speed = COMPUTER_SPEED * getDifficultyProfile().aiSpeedMultiplier;
     statusMessage.textContent = `Ready for a new ${targetScore}-point match at ${DIFFICULTY_PROFILES[currentDifficulty - 1].label.toLowerCase()} difficulty.`;
-    resetBall();
+    resetPaddlesAndBall();
+    hideResultState();
+    confettiLayer.innerHTML = '';
 }
 
 // Reset ball to center
-function resetBall() {
+function resetBall({ pauseAfterScore = false } = {}) {
     const profile = getDifficultyProfile();
     ballObject.x = BOARD_WIDTH / 2;
     ballObject.y = BOARD_HEIGHT / 2;
+    ballObject.prevX = ballObject.x;
+    ballObject.prevY = ballObject.y;
+    ballObject.speedX = 0;
+    ballObject.speedY = 0;
+
     ballObject.speedX = (Math.random() > 0.5 ? 1 : -1) * INITIAL_BALL_SPEED * profile.ballMultiplier;
     ballObject.speedY = (Math.random() - 0.5) * INITIAL_BALL_SPEED * 2 * profile.ballMultiplier;
     ballObject.speedX = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedX));
     ballObject.speedY = Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, ballObject.speedY));
+
+    if (pauseAfterScore) {
+        scorePaused = true;
+        clearTimeout(scorePauseTimer);
+        scorePauseTimer = setTimeout(() => {
+            scorePaused = false;
+        }, POINT_PAUSE_MS);
+    } else {
+        scorePaused = false;
+    }
 }
 
 // Main game loop
@@ -331,7 +408,9 @@ function gameLoop() {
 
     updatePlayerPaddle();
     updateComputerPaddle();
-    updateBall();
+    if (!scorePaused) {
+        updateBall();
+    }
 
     requestAnimationFrame(gameLoop);
 }
@@ -342,7 +421,9 @@ function initGame() {
     targetScore = Number(targetScoreSelect.value);
     difficultyLabel.textContent = `${currentDifficulty} - ${DIFFICULTY_PROFILES[currentDifficulty - 1].label}`;
     paddles.computer.speed = COMPUTER_SPEED * getDifficultyProfile().aiSpeedMultiplier;
-    resetBall();
+    resetPaddlesAndBall();
+    hideResultState();
+    confettiLayer.innerHTML = '';
     playerPaddle.style.top = paddles.player.y + 'px';
     computerPaddle.style.top = paddles.computer.y + 'px';
     ball.style.left = ballObject.x + 'px';
